@@ -1,0 +1,172 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("/assets/fonts/BricolageGrotesque[opsz,wdth,wght].woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Outfit";
+  src: url("/assets/fonts/Outfit[wght].woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --radius: 0.75rem;
+
+    /* Dark cinematic theme — deep navy + electric teal */
+    --background: 0.12 0.015 240;
+    --foreground: 0.95 0.01 220;
+    --card: 0.16 0.018 240;
+    --card-foreground: 0.95 0.01 220;
+    --popover: 0.18 0.02 240;
+    --popover-foreground: 0.95 0.01 220;
+    --primary: 0.72 0.19 185;
+    --primary-foreground: 0.08 0.015 240;
+    --secondary: 0.22 0.025 240;
+    --secondary-foreground: 0.85 0.015 220;
+    --muted: 0.2 0.02 240;
+    --muted-foreground: 0.55 0.02 230;
+    --accent: 0.65 0.22 185;
+    --accent-foreground: 0.08 0.015 240;
+    --destructive: 0.62 0.23 20;
+    --destructive-foreground: 0.98 0 0;
+    --border: 0.28 0.025 240;
+    --input: 0.22 0.022 240;
+    --ring: 0.65 0.18 185;
+    --success: 0.68 0.18 150;
+    --warning: 0.78 0.18 80;
+    --chart-1: 0.72 0.19 185;
+    --chart-2: 0.65 0.22 280;
+    --chart-3: 0.68 0.18 150;
+    --chart-4: 0.78 0.18 80;
+    --chart-5: 0.62 0.23 20;
+    --sidebar: 0.14 0.016 240;
+    --sidebar-foreground: 0.95 0.01 220;
+    --sidebar-primary: 0.72 0.19 185;
+    --sidebar-primary-foreground: 0.08 0.015 240;
+    --sidebar-accent: 0.22 0.025 240;
+    --sidebar-accent-foreground: 0.85 0.015 220;
+    --sidebar-border: 0.25 0.022 240;
+    --sidebar-ring: 0.65 0.18 185;
+
+    /* Video-specific tokens */
+    --video-bg: 0.08 0.015 240;
+    --control-bar-bg: 0.14 0.016 240 / 85%;
+    --glow-teal: 0.72 0.19 185;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body;
+    background-image:
+      radial-gradient(ellipse at 20% 50%, oklch(0.18 0.04 230 / 40%) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, oklch(0.16 0.03 210 / 30%) 0%, transparent 50%);
+    min-height: 100vh;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: "Bricolage Grotesque", sans-serif;
+  }
+  .font-body {
+    font-family: "Outfit", sans-serif;
+  }
+
+  .glass {
+    backdrop-filter: blur(16px) saturate(180%);
+    background: oklch(var(--card) / 70%);
+    border: 1px solid oklch(var(--border) / 60%);
+  }
+
+  .glass-heavy {
+    backdrop-filter: blur(24px) saturate(200%);
+    background: oklch(var(--card) / 80%);
+    border: 1px solid oklch(var(--primary) / 20%);
+  }
+
+  .glow-teal {
+    box-shadow: 0 0 20px oklch(var(--primary) / 25%), 0 0 40px oklch(var(--primary) / 10%);
+  }
+
+  .glow-teal-sm {
+    box-shadow: 0 0 12px oklch(var(--primary) / 30%);
+  }
+
+  .video-gradient-border {
+    background: linear-gradient(oklch(var(--card)), oklch(var(--card))) padding-box,
+      linear-gradient(135deg, oklch(var(--primary) / 60%), oklch(0.65 0.22 280 / 40%), oklch(var(--primary) / 20%)) border-box;
+    border: 1px solid transparent;
+  }
+
+  .control-btn {
+    @apply relative flex items-center justify-center w-11 h-11 rounded-full transition-all duration-200;
+    @apply hover:scale-110 active:scale-95;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(var(--border)) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: oklch(var(--border));
+    border-radius: 2px;
+  }
+
+  .text-gradient-teal {
+    background: linear-gradient(135deg, oklch(0.85 0.15 185), oklch(0.72 0.19 185));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 12px oklch(var(--destructive) / 40%); }
+  50% { box-shadow: 0 0 24px oklch(var(--destructive) / 70%), 0 0 40px oklch(var(--destructive) / 30%); }
+}
+
+@keyframes pulse-teal {
+  0%, 100% { box-shadow: 0 0 12px oklch(var(--primary) / 40%); }
+  50% { box-shadow: 0 0 24px oklch(var(--primary) / 70%), 0 0 40px oklch(var(--primary) / 30%); }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-pulse-teal {
+  animation: pulse-teal 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-glow,
+  .animate-pulse-teal {
+    animation: none;
+  }
+}
