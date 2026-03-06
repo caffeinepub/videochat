@@ -27,9 +27,9 @@ export const Room = IDL.Record({
   'createdAt' : IDL.Int,
 });
 export const Signal = IDL.Record({
-  'peerId' : IDL.Text,
   'timestamp' : IDL.Int,
   'roomId' : IDL.Text,
+  'senderId' : IDL.Text,
   'payload' : IDL.Text,
   'signalType' : IDL.Text,
 });
@@ -81,9 +81,9 @@ export const idlFactory = ({ IDL }) => {
     'createdAt' : IDL.Int,
   });
   const Signal = IDL.Record({
-    'peerId' : IDL.Text,
     'timestamp' : IDL.Int,
     'roomId' : IDL.Text,
+    'senderId' : IDL.Text,
     'payload' : IDL.Text,
     'signalType' : IDL.Text,
   });

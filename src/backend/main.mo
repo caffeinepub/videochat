@@ -1,19 +1,22 @@
 import Array "mo:core/Array";
-import Text "mo:core/Text";
-import Nat "mo:core/Nat";
 import Map "mo:core/Map";
+import Text "mo:core/Text";
 import Time "mo:core/Time";
-import Runtime "mo:core/Runtime";
 import Principal "mo:core/Principal";
+
 import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
+import Runtime "mo:core/Runtime";
+
+
+// Apply migration on upgrade
 
 actor {
   // Initialize the access control system
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
 
-  // User Profile System
+  // User Profile System (kept for platform requirements)
   public type UserProfile = {
     name : Text;
   };
@@ -42,13 +45,13 @@ actor {
   };
 
   // Video Chat Application Types
-  type Room = {
+  public type Room = {
     id : Text;
     name : Text;
     createdAt : Int;
   };
 
-  type Message = {
+  public type Message = {
     id : Nat;
     roomId : Text;
     sender : Text;
@@ -56,9 +59,9 @@ actor {
     timestamp : Int;
   };
 
-  type Signal = {
+  public type Signal = {
     roomId : Text;
-    peerId : Text;
+    senderId : Text;
     signalType : Text;
     payload : Text;
     timestamp : Int;
@@ -70,12 +73,8 @@ actor {
   let signals = Map.empty<Text, [Signal]>();
   var nextMessageId = 0;
 
-  // Room Management
+  // Room Management - Open to all including anonymous
   public shared ({ caller }) func createRoom(name : Text) : async Text {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can create rooms");
-    };
-
     let roomId = name.concat(Time.now().toText());
     let room = {
       id = roomId;
@@ -87,7 +86,6 @@ actor {
   };
 
   public query ({ caller }) func getRoom(roomId : Text) : async Room {
-    // Accessible to all users including guests
     switch (rooms.get(roomId)) {
       case (null) { Runtime.trap("Room does not exist") };
       case (?room) { room };
@@ -95,16 +93,11 @@ actor {
   };
 
   public query ({ caller }) func listRooms() : async [Room] {
-    // Accessible to all users including guests
     rooms.values().toArray();
   };
 
-  // Message Management
+  // Message Management - Open to all including anonymous
   public shared ({ caller }) func sendMessage(roomId : Text, sender : Text, content : Text) : async Nat {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can send messages");
-    };
-
     let message : Message = {
       id = nextMessageId;
       roomId;
@@ -127,55 +120,53 @@ actor {
   };
 
   public query ({ caller }) func getMessages(roomId : Text) : async [Message] {
-    // Accessible to all users including guests
     switch (messages.get(roomId)) {
       case (null) { [] };
       case (?msgs) { msgs };
     };
   };
 
-  // Signal Management (WebRTC)
-  public shared ({ caller }) func postSignal(roomId : Text, peerId : Text, signalType : Text, payload : Text) : async Bool {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can post signals");
-    };
-
+  // Signal Management (WebRTC) - Open to all including anonymous
+  public shared ({ caller }) func postSignal(roomId : Text, senderId : Text, signalType : Text, payload : Text) : async Bool {
     let signal : Signal = {
       roomId;
-      peerId;
+      senderId;
       signalType;
       payload;
       timestamp = Time.now();
     };
 
-    let signalKey = roomId.concat(peerId);
-
-    switch (signals.get(signalKey)) {
+    switch (signals.get(roomId)) {
       case (null) {
-        signals.add(signalKey, [signal]);
+        signals.add(roomId, [signal]);
       };
       case (?existingSignals) {
-        signals.add(signalKey, existingSignals.concat([signal]));
+        signals.add(roomId, existingSignals.concat([signal]));
       };
     };
-
     true;
   };
 
-  public shared ({ caller }) func getSignals(roomId : Text, peerId : Text) : async [Signal] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can retrieve signals");
-    };
-
-    let signalKey = roomId.concat(peerId);
-    let result = switch (signals.get(signalKey)) {
+  public shared ({ caller }) func getSignals(roomId : Text, _peerId : Text) : async [Signal] {
+    // Get current signals or empty
+    let currentSignals = switch (signals.get(roomId)) {
       case (null) { [] };
-      case (?sigs) { sigs };
+      case (?s) { s };
     };
 
-    // Clear signals after retrieval
-    signals.remove(signalKey);
+    // Filter signals older than 30 seconds
+    let now = Time.now();
+    let filteredSignals = currentSignals.filter(
+      func(signal) { (now - signal.timestamp) <= 30_000_000_000 },
+    );
 
-    result;
+    // Update signals map with filtered signals
+    if (filteredSignals.size() > 0) {
+      signals.add(roomId, filteredSignals);
+    } else {
+      signals.remove(roomId);
+    };
+
+    currentSignals;
   };
 };

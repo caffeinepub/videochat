@@ -19,9 +19,9 @@ export interface Message {
 }
 export interface Room { 'id' : string, 'name' : string, 'createdAt' : bigint }
 export interface Signal {
-  'peerId' : string,
   'timestamp' : bigint,
   'roomId' : string,
+  'senderId' : string,
   'payload' : string,
   'signalType' : string,
 }

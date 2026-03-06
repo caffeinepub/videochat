@@ -90,9 +90,9 @@ export class ExternalBlob {
     }
 }
 export interface Signal {
-    peerId: string;
     timestamp: bigint;
     roomId: string;
+    senderId: string;
     payload: string;
     signalType: string;
 }
@@ -124,11 +124,11 @@ export interface backendInterface {
     getCallerUserRole(): Promise<UserRole>;
     getMessages(roomId: string): Promise<Array<Message>>;
     getRoom(roomId: string): Promise<Room>;
-    getSignals(roomId: string, peerId: string): Promise<Array<Signal>>;
+    getSignals(roomId: string, _peerId: string): Promise<Array<Signal>>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
     listRooms(): Promise<Array<Room>>;
-    postSignal(roomId: string, peerId: string, signalType: string, payload: string): Promise<boolean>;
+    postSignal(roomId: string, senderId: string, signalType: string, payload: string): Promise<boolean>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     sendMessage(roomId: string, sender: string, content: string): Promise<bigint>;
 }

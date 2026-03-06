@@ -6,6 +6,7 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
+import { createHashHistory } from "@tanstack/react-router";
 import HomePage from "./pages/HomePage";
 import RoomPage from "./pages/RoomPage";
 
@@ -41,7 +42,8 @@ const roomRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([homeRoute, roomRoute]);
 
-const router = createRouter({ routeTree });
+const hashHistory = createHashHistory();
+const router = createRouter({ routeTree, history: hashHistory });
 
 declare module "@tanstack/react-router" {
   interface Register {

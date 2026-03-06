@@ -27,8 +27,26 @@ import { ShareDialog } from "../components/ShareDialog";
 import { useActor } from "../hooks/useActor";
 import { useGetRoom } from "../hooks/useQueries";
 
-const STUN_SERVERS: RTCConfiguration = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+// Multiple STUN servers for better NAT traversal reliability
+const ICE_SERVERS: RTCConfiguration = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun.stunprotocol.org:3478" },
+    // Free TURN relay so mobile/carrier NATs can connect
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+  ],
+  iceCandidatePoolSize: 10,
 };
 
 function generatePeerId(): string {
@@ -85,11 +103,20 @@ export default function RoomPage() {
   const signalingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
-  const offerSentRef = useRef(false);
   const processedSignalsRef = useRef<Set<string>>(new Set());
+  // Queued ICE candidates waiting for remote description to be set
+  const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  // Whether we have already set a remote description
+  const remoteDescSetRef = useRef(false);
+  // Whether this peer sent the offer (caller role)
+  const isCallerRef = useRef(false);
+  // Whether we've already sent an offer this session
+  const offerSentRef = useRef(false);
+  // Timestamp when we joined — used for role negotiation
+  const joinTimestampRef = useRef(Date.now());
 
   const { data: room } = useGetRoom(roomId);
-  const roomUrl = `${window.location.origin}/room/${roomId}`;
+  const roomUrl = `${window.location.origin}${window.location.pathname}#/room/${roomId}`;
 
   // ─── Start local stream ───────────────────────────────────────────────────
   const startLocalStream = useCallback(
@@ -125,10 +152,22 @@ export default function RoomPage() {
     [],
   );
 
+  // ─── Drain queued ICE candidates once remote desc is set ─────────────────
+  const drainPendingIce = useCallback(async (pc: RTCPeerConnection) => {
+    const queue = pendingIceCandidatesRef.current.splice(0);
+    for (const c of queue) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(c));
+      } catch {
+        // ignore stale candidates
+      }
+    }
+  }, []);
+
   // ─── Create RTCPeerConnection ─────────────────────────────────────────────
   const createPeerConnection = useCallback(
     (stream: MediaStream) => {
-      const pc = new RTCPeerConnection(STUN_SERVERS);
+      const pc = new RTCPeerConnection(ICE_SERVERS);
 
       for (const track of stream.getTracks()) {
         pc.addTrack(track, stream);
@@ -146,12 +185,12 @@ export default function RoomPage() {
         try {
           await actor.postSignal(
             roomId,
-            "broadcast",
+            localPeerId.current,
             "ice",
             JSON.stringify(event.candidate),
           );
         } catch {
-          // ignore ICE errors
+          // ignore ICE posting errors
         }
       };
 
@@ -164,6 +203,7 @@ export default function RoomPage() {
           pc.connectionState === "failed"
         ) {
           setHasRemote(false);
+          setIsConnecting(false);
         }
       };
 
@@ -181,23 +221,55 @@ export default function RoomPage() {
       const signals = await actor.getSignals(roomId, localPeerId.current);
 
       for (const signal of signals) {
+        // Skip signals sent by ourselves
+        if (signal.senderId === localPeerId.current) continue;
+
         const sigKey = `${signal.signalType}-${signal.timestamp}-${signal.payload.slice(0, 20)}`;
         if (processedSignalsRef.current.has(sigKey)) continue;
         processedSignalsRef.current.add(sigKey);
 
         const pc = pcRef.current;
 
-        if (signal.signalType === "offer") {
+        if (signal.signalType === "join") {
+          // A new peer joined. If we joined earlier, we are the caller — send offer.
+          const theirTs = Number(signal.payload);
+          if (
+            joinTimestampRef.current < theirTs &&
+            !offerSentRef.current &&
+            !isCallerRef.current
+          ) {
+            isCallerRef.current = true;
+            offerSentRef.current = true;
+            try {
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
+              await actor.postSignal(
+                roomId,
+                localPeerId.current,
+                "offer",
+                JSON.stringify(offer),
+              );
+              setIsConnecting(true);
+            } catch {
+              offerSentRef.current = false;
+            }
+          }
+        } else if (signal.signalType === "offer") {
+          // Only process if we are not the caller (avoid echo)
+          if (isCallerRef.current) continue;
+          if (pc.signalingState !== "stable") continue;
           try {
             const offerSdp = JSON.parse(
               signal.payload,
             ) as RTCSessionDescriptionInit;
             await pc.setRemoteDescription(new RTCSessionDescription(offerSdp));
+            remoteDescSetRef.current = true;
+            await drainPendingIce(pc);
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             await actor.postSignal(
               roomId,
-              "broadcast",
+              localPeerId.current,
               "answer",
               JSON.stringify(answer),
             );
@@ -206,6 +278,7 @@ export default function RoomPage() {
             // ignore malformed signals
           }
         } else if (signal.signalType === "answer") {
+          if (!isCallerRef.current) continue;
           if (pc.signalingState === "have-local-offer") {
             try {
               const answerSdp = JSON.parse(
@@ -214,6 +287,8 @@ export default function RoomPage() {
               await pc.setRemoteDescription(
                 new RTCSessionDescription(answerSdp),
               );
+              remoteDescSetRef.current = true;
+              await drainPendingIce(pc);
               setIsConnecting(true);
             } catch {
               // ignore
@@ -222,7 +297,12 @@ export default function RoomPage() {
         } else if (signal.signalType === "ice") {
           try {
             const candidate = JSON.parse(signal.payload) as RTCIceCandidateInit;
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            if (remoteDescSetRef.current) {
+              await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            } else {
+              // Queue until remote description is ready
+              pendingIceCandidatesRef.current.push(candidate);
+            }
           } catch {
             // ignore
           }
@@ -231,7 +311,7 @@ export default function RoomPage() {
     } catch {
       // ignore polling errors
     }
-  }, [actor, roomId]);
+  }, [actor, roomId, drainPendingIce]);
 
   // ─── Initialize ──────────────────────────────────────────────────────────
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional one-time init, functions are stable refs
@@ -239,43 +319,35 @@ export default function RoomPage() {
     if (isFetching || !actor) return;
 
     let cancelled = false;
-    let offerTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function init() {
       const stream = await startLocalStream(facingMode);
       if (!stream || cancelled) return;
 
-      const pc = createPeerConnection(stream);
+      createPeerConnection(stream);
 
-      // Send offer after short delay
-      offerTimer = setTimeout(async () => {
-        if (cancelled || offerSentRef.current) return;
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          await actor!.postSignal(
-            roomId,
-            "broadcast",
-            "offer",
-            JSON.stringify(offer),
-          );
-          offerSentRef.current = true;
-        } catch {
-          // ignore offer errors
-        }
-      }, 2000);
+      // Announce join with our timestamp so the earlier peer becomes caller
+      try {
+        await actor!.postSignal(
+          roomId,
+          localPeerId.current,
+          "join",
+          String(joinTimestampRef.current),
+        );
+      } catch {
+        // ignore
+      }
 
-      // Start polling
+      // Start polling every 1.5s for faster handshake
       signalingIntervalRef.current = setInterval(() => {
         processSignals();
-      }, 2000);
+      }, 1500);
     }
 
     init();
 
     return () => {
       cancelled = true;
-      if (offerTimer) clearTimeout(offerTimer);
       if (signalingIntervalRef.current) {
         clearInterval(signalingIntervalRef.current);
       }
